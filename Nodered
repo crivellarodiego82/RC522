@@ -1,0 +1,230 @@
+[
+    {
+        "id": "58ccbf6f53e55cf0",
+        "type": "tab",
+        "label": "RC522",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "764d438acb2b68d8",
+        "type": "mqtt in",
+        "z": "58ccbf6f53e55cf0",
+        "name": "",
+        "topic": "/rfid/card/ping",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "fc2a1412.370a68",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 110,
+        "y": 100,
+        "wires": [
+            [
+                "711176ed2fc6c68b",
+                "75d6266ace8fc58c"
+            ]
+        ]
+    },
+    {
+        "id": "8bd0f0679c0d92bb",
+        "type": "mqtt in",
+        "z": "58ccbf6f53e55cf0",
+        "name": "",
+        "topic": "/rfid/card/pong",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "fc2a1412.370a68",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 120,
+        "y": 160,
+        "wires": [
+            [
+                "711176ed2fc6c68b",
+                "75d6266ace8fc58c"
+            ]
+        ]
+    },
+    {
+        "id": "711176ed2fc6c68b",
+        "type": "debug",
+        "z": "58ccbf6f53e55cf0",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 550,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "50438655b99f4f7f",
+        "type": "comment",
+        "z": "58ccbf6f53e55cf0",
+        "name": "RC522 Ino",
+        "info": "// LIBRARYS\n#include <WiFi.h> \n//\n\n#include <DNSServer.h>\n//\n#include <PubSubClient.h>\n#include <SPI.h>\n#include <MFRC522.h>\n\n// DEFINES\n#define RST_PIN 22\n#define SS_PIN 21\n\n// VARIABLES\nconst char* SSID     = \"Casa_WiFi_2g\"; // rede wifi\nconst char* PASSWORD = \"P@ssw0rd@2020\"; // senha da rede wifi\n\nconst char* BROKER_MQTT = \"10.0.2.43\"; // ip/host do broker\nint         BROKER_PORT = 1883; // porta do broker\n\nconst char* TOPIC_PING = \"/rfid/card/ping\";\n\nconst char* TOPIC_PONG = \"/rfid/card/pong\";\n\n// PROTOTYPES\nvoid initPins();\nvoid initSerial();\nvoid initRfid();\nvoid initWiFi();\nvoid initMQTT();\n\n// OBJECTS\nWiFiClient client;\nPubSubClient MQTT(client); // instancia o mqtt\nMFRC522 mfrc522(SS_PIN, RST_PIN); // instancia o rfid\n\n// setup\nvoid setup() {\n  initSerial();\n  initWiFi();\n  initMQTT();\n  initRfid();\n\n}\n\nvoid loop() {\n  if (!MQTT.connected()) {\n    reconnectMQTT();\n  }\n  recconectWiFi();\n  MQTT.loop();\n\n  if ( ! mfrc522.PICC_IsNewCardPresent()) {\n    delay(500);\n    return;\n  }\n\n  if ( ! mfrc522.PICC_ReadCardSerial()) {\n    delay(500);\n    return;\n  }\n\n  rfidProcess();\n\n}\n\n// implementacao dos prototypes\n\nvoid initSerial() {\n  Serial.begin(9600);\n}\n\nvoid initRfid() {\n  SPI.begin();\n  mfrc522.PCD_Init();\n  Serial.println(\"Avvicinare Carta...\");\n  Serial.println();\n}\n\nvoid initWiFi() {\n  delay(10);\n  Serial.println(\"Connesso: \" + String(SSID));\n\n  WiFi.begin(SSID, PASSWORD);\n  while (WiFi.status() != WL_CONNECTED) {\n    delay(100);\n    Serial.print(\".\");\n  }\n  Serial.println();\n  Serial.print(\"Connesso alla rete \" + String(SSID) + \" | IP => \");\n  Serial.println(WiFi.localIP());\n}\n\n// Broker MQTT\nvoid initMQTT() {\n  MQTT.setServer(BROKER_MQTT, BROKER_PORT);\n  MQTT.setCallback(mqtt_callback);\n}\n\n//Função que recebe as mensagens publicadas\nvoid mqtt_callback(char* topic, byte* payload, unsigned int length) {\n\n  String message;\n  for (int i = 0; i < length; i++) {\n    char c = (char)payload[i];\n    message += c;\n  }\n  Serial.println(\"Tópico => \" + String(topic) + \" | Valor => \" + String(message));\n\n  Serial.flush();\n}\n\nvoid reconnectMQTT() {\n  while (!MQTT.connected()) {\n    Serial.println(\"In connessione a Broker MQTT: \" + String(BROKER_MQTT));\n    if (MQTT.connect(\"Esp32\")) {\n//    if (MQTT.connect(\"Esp32\", BROKER_USER, BROKER_PASS )) {\n\n      Serial.println(\"Conectado\");\n      MQTT.subscribe(\"/rfid/card/pong\");\n\n    } else {\n      Serial.println(\"Falha ao Reconectar\");\n      Serial.println(\"Tentando se reconectar em 2 segundos\");\n      delay(2000);\n    }\n  }\n}\n\nvoid recconectWiFi() {\n  while (WiFi.status() != WL_CONNECTED) {\n    delay(100);\n    Serial.print(\".\");\n  }\n}\n\nvoid rfidProcess()\n{\n  Serial.print(\"UID da tag : \");\n  String conteudo = \"\";\n  byte letra;\n  for (byte i = 0; i < mfrc522.uid.size; i++)\n  {\n    conteudo.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? \"0\" : \"\"));\n    conteudo.concat(String(mfrc522.uid.uidByte[i], HEX));\n  }\n  char UUID[9];\n  conteudo.toCharArray(UUID, 9);\n  Serial.println(conteudo);\n  MQTT.publish(TOPIC_PING, UUID);\n}",
+        "x": 100,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "7758b81fc778f6fd",
+        "type": "comment",
+        "z": "58ccbf6f53e55cf0",
+        "name": "Connessioni",
+        "info": "RC522     Esp32\n3.3v       3.3v\nRst.       Pin22\nGnd.       Gnd\nMISO.      Pin19\nMOSI.      Pin23\nSCK.       Pin18\nSDA.       Pin21\n",
+        "x": 250,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "75d6266ace8fc58c",
+        "type": "change",
+        "z": "58ccbf6f53e55cf0",
+        "name": "",
+        "rules": [
+            {
+                "t": "change",
+                "p": "payload",
+                "pt": "msg",
+                "from": "55891ae3",
+                "fromt": "str",
+                "to": "true",
+                "tot": "bool"
+            },
+            {
+                "t": "change",
+                "p": "payload",
+                "pt": "msg",
+                "from": "acc851d3",
+                "fromt": "str",
+                "to": "false",
+                "tot": "bool"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 340,
+        "y": 180,
+        "wires": [
+            [
+                "711176ed2fc6c68b",
+                "59e099ceccecbd94"
+            ]
+        ]
+    },
+    {
+        "id": "59e099ceccecbd94",
+        "type": "ui_led",
+        "z": "58ccbf6f53e55cf0",
+        "group": "39f12d307b8333f3",
+        "order": 0,
+        "width": 0,
+        "height": 0,
+        "label": "",
+        "labelPlacement": "left",
+        "labelAlignment": "left",
+        "colorForValue": [
+            {
+                "color": "red",
+                "value": "false",
+                "valueType": "bool"
+            },
+            {
+                "color": "green",
+                "value": "true",
+                "valueType": "bool"
+            }
+        ],
+        "allowColorForValueInMessage": false,
+        "name": "",
+        "x": 530,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "6889689a33938c11",
+        "type": "inject",
+        "z": "58ccbf6f53e55cf0",
+        "name": "Reset",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "2",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "2",
+        "topic": "",
+        "payload": "false",
+        "payloadType": "bool",
+        "x": 90,
+        "y": 220,
+        "wires": [
+            [
+                "59e099ceccecbd94"
+            ]
+        ]
+    },
+    {
+        "id": "fc2a1412.370a68",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "10.0.2.43",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "sessionExpiry": ""
+    },
+    {
+        "id": "39f12d307b8333f3",
+        "type": "ui_group",
+        "name": "Riconoscimento",
+        "tab": "10e366d7073e58c9",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "10e366d7073e58c9",
+        "type": "ui_tab",
+        "name": "Accesso",
+        "icon": "dashboard",
+        "disabled": false,
+        "hidden": false
+    }
+]
